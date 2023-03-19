@@ -1,0 +1,116 @@
+---
+title: "Task 1"
+author: "Hannah Irish"
+date: "2023-03-18"
+output:
+  html_document:
+    code_folding: hide
+---
+
+# CA County Oil Spills 2008
+
+### Include Packages
+```{r setup, include=TRUE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+library(tidyverse)
+library(sf)
+library(tmap)
+library(here)
+library(spatstat)
+library(terra)
+
+```
+
+
+### Read in Data
+```{r}
+
+##read in spill data
+oil_spills_sf <- read_sf(dsn=here("task1"), layer= "Oil_Spill_Incident_Tracking_[ds394]") %>%
+  janitor::clean_names() %>%
+  filter(inlandmari == "Inland") %>% ##filter by inland
+  st_transform(crs = 32610) ##set CRS
+
+##read in ca counties
+ca_counties_sf <- read_sf(here("task1","data", "california_county_shape_file.shp")) %>%
+  janitor::clean_names() %>%
+  st_set_crs(4326) %>% ##set CRS 
+  st_transform(32610)
+
+
+```
+
+
+### Set up data for tmpa
+```{r}
+
+spills_ppp <- as.ppp(oil_spills_sf) ###set ppp
+ca_counties_win <- as.owin(ca_counties_sf) ###set window
+
+spills_full <- ppp(spills_ppp$x, spills_ppp$y,
+                  window= ca_counties_win) ###combine
+
+```
+
+### Rasterize
+
+```{r}
+
+spills_density <- density(spills_full, sigma=5000) ###set density
+
+spills_r <- rast(spills_density) ##rasterize
+crs(spills_r) <- crs(oil_spills_sf) ##make consistent CRS
+
+###make tmap
+tmap_mode("view") ##interactive
+tm_shape(spills_r) +
+  tm_raster(midpoint = NA,
+            palette="Reds", ##colors
+            legend.show = FALSE)
+```
+
+
+### Make choropleth
+```{r}
+###find number of spills in each county
+count_oil_spills_sf <- oil_spills_sf %>%
+  group_by(localecoun) %>%
+  summarize(n_spills = n())
+
+##rename county to name to set up for merge
+colnames(count_oil_spills_sf)[1] = "name"
+
+##make data frame to merge
+spills_c <- as.data.frame(count_oil_spills_sf) %>%
+  select(name, n_spills)
+
+
+##merge
+totaled <- merge(ca_counties_sf, spills_c, by.x="name", all.x=TRUE)
+
+totaled[is.na(totaled)] <- 0
+
+
+##Plot
+ggplot() +
+  geom_sf(data=totaled,
+          size=0.5,
+          aes(fill=n_spills))+ 
+  scale_fill_continuous(low="lavenderblush1", high ="darkred")+
+  labs(fill="Number of Spills in 2008", title="Oil Spills in 2008 by California County")+
+  theme_void()
+  
+
+```
+
+# Overview 
+ 
+ The data has an overview of oil spills in CA in 2008, with timestamps and city and county information. There were the most oil spills in the year in the LA County, as you can see from the Choropleth map above. 
+ 
+ Data souce:
+ 
+ CA DFW. "Oil Spill Incident Tracking [ds394]" California.GOV. https://gis.data.ca.gov/datasets/7464e3d6f4924b50ad06e5a553d71086_0/explore?location=36.827189%2C-119.422009%2C6.74
+ 
+ 
+ 
+

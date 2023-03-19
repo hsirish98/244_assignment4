@@ -1,0 +1,54 @@
+---
+title: 'Task 3 -- Text Analysis'
+author: "Hannah Irish"
+date: "3/20/23"
+output: 
+  html_document:
+    code_folding: hide
+    css: "style.css"
+---
+
+```{r setup, include=TRUE, echo=TRUE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+library(tidyverse)
+library(tidytext)
+library(textdata)
+library(pdftools)
+library(ggwordcloud)
+library(here)
+library(devtools)
+devtools::install_github("benmarwick/words2number")
+library(words2number)
+```
+
+Read in book
+```{r}
+gob_of_fire <- pdf_text(here("task3", "data","HP4.pdf"))
+```
+
+
+Put into data frame
+```{r}
+gob_of_fire_df <- data.frame(gob_of_fire) %>%
+  mutate(page = 1:n()) %>%
+  mutate(text_full = str_squish(gob_of_fire))  
+ 
+```
+
+Tidying data
+```{r}
+gob_chaps <- gob_of_fire_df %>%
+  slice(-(1:4))
+
+gob_chapters <- gob_chaps %>%
+  mutate(chapter = ifelse(str_detect(text_full, "CHAPTER"), text_full, NA)) %>%
+  fill(chapter, .direction = 'down') %>%
+  separate(col=chapter, into=c("ch", "num"), sep=" ") 
+
+gob_chapters$num <- tolower(gob_chapters$num)
+
+gob_chapters <- gob_chapters %>%
+  mutate(chapter =to_number(num))
+ 
+```
+

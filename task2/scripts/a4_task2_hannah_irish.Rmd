@@ -1,0 +1,184 @@
+---
+title: 'Task 2 -- Time Series'
+author: "Hannah Irish"
+date: "3/20/23"
+output: 
+  html_document:
+    code_folding: hide
+    css: "style.css"
+---
+
+```{r setup, include=TRUE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+library(tidyverse)
+library(tsibble)
+library(markdown)
+library(feasts)
+library(fable)
+library(broom)
+library(here)
+library(lubridate)
+```
+
+
+
+## Overview 
+
+```{r echo=FALSE, out.width = "30%", fig.align = "center"}
+knitr::include_graphics(here("task2","data","coho_sal.jpg"))
+```
+
+Picture retrieved from Eiko Jones stock images (https://www.eikojonesphotography.com/media/bdc87b68-04f0-4ccb-a659-d96169efa63e-coho-salmon-swimming-upstream-in-quinsam-river)
+
+
+# Willamette River Salmon. 
+
+The data contain observaces of passages for different fish in the Willamette River in Oregon with time stamps and temperature in Celcius from 2001 to 2010. Data were shared by and accessed from Columbia River DART (Data Access in Real Time). We will explore the time series data for species Coho, Jack Coho, and Steelhead in the following analysis. 
+
+Source: U.S. Army Corps of Engineers & others. Accessed March 2023. "DART Adult Passage Graphics & Text". Columbia Basin Research. https://www.cbr.washington.edu/dart/query/adult_graph_text
+
+## {.tabset .tabset-fade .tabset-pills}
+
+### Part 1
+
+
+Read in data:
+```{r}
+fish <- read_csv(here("task2","data","willamette_fish_passage.csv")) %>%
+  janitor::clean_names() %>% ##lowercase names
+  mutate(date=mdy(date)) %>%
+  mutate(month=month(date, label=TRUE), year=year(date))
+
+fish[is.na(fish)] <- 0  ##replace NA with 0
+
+fish <- fish %>%
+  mutate(monthyear = paste(month,year))  %>%
+  select(-project,-date,-temp_c,-month)
+
+fish_sum <- fish %>%
+  group_by(monthyear) %>%
+   summarise(across(chinook_run:pink,sum)) 
+
+fish_ts <- fish_sum %>% 
+  mutate(date = tsibble::yearmonth(monthyear)) %>% 
+  as_tsibble(key = NULL, index = date)
+
+fish_ts_tidy <- fish_ts %>%
+  select(-monthyear) %>%
+   pivot_longer(fish_ts, cols = (1:13), names_to = "species", values_to = "passage")
+
+  
+
+```
+
+Overall, there is some seasonality and cyclicality in the passage of each fish species. The coho passage also appears to have an increasing trend as the passage peaks seem to be getting bigger closer to the present.
+
+
+
+**Coho**
+
+Make plot for Coho:
+```{r}
+coho <- fish_ts_tidy %>%
+  filter(species=="coho")
+
+ggplot() +
+  geom_line(data=coho, aes(x=date, y=passage),color="red") +
+  labs(y= "Fish passage", title="Coho Fish Passage (2001-2010)",x="Date")+
+  theme_minimal()
+```
+
+
+**Jack Coho**
+
+Make plot for Jack Coho:
+```{r}
+
+jack_coho <- fish_ts_tidy %>%
+  filter(species=="jack_coho")
+
+ggplot() +
+  geom_line(data=jack_coho, aes(x=date, y=passage),color="blue") +
+  labs(y= "Fish passage", title="Jack Coho Fish Passage (2001-2010)",x="Date")+
+  theme_minimal()
+```
+
+**Steelhead**
+
+Make plot for steelhead:
+```{r}
+
+steelhead <- fish_ts_tidy %>%
+  filter(species=="steelhead")
+
+ggplot() +
+  geom_line(data=steelhead, aes(x=date, y=passage),color="purple") +
+  labs(y= "Fish passage", title="Steelhead Fish Passage (2001-2010)",x="Date")+
+  theme_minimal()
+```
+
+
+
+
+### Part 2
+
+Form individual plots by month and arrange with plot_grid()
+```{r}
+
+coho_plot <- coho %>%
+  gg_season(y=passage) +
+  theme_minimal() +
+  scale_color_viridis_c()+
+    labs(x="Month",
+         y="Fish Passage",
+         title="Coho Passage by Month")
+
+jack_coho_plot <- jack_coho %>%
+  gg_season(y=passage) +
+  theme_minimal() +
+  scale_color_viridis_c()+
+    labs(x="Month",
+         y="Fish Passage",
+         title="Jack Coho Passage by Month")
+
+steelhead_plot <- steelhead %>%
+  gg_season(y=passage) +
+  theme_minimal() +
+  scale_color_viridis_c()+
+    labs(x="Month",
+         y="Fish Passage",
+         title="Steelhead Passage by Month")
+
+cowplot::plot_grid(coho_plot,jack_coho_plot, steelhead_plot,ncol=1)
+
+
+```
+
+
+Coho and Jack Coho have a narrower range of passage than does the steelhead. Coho and Jack Coho, as more closely related species, tend to have passage during the same August-November period whereas the Steelhead has passage from January to July. However, the Steelhead total per month is not as high as the cohos.
+
+
+
+### Part 3
+
+Calculate sum by year and make tidy:
+```{r}
+
+fish_3_sum <- fish %>%
+  select(coho,jack_coho,steelhead,year) %>%
+  group_by(year) %>%
+   summarise(across(coho:steelhead,sum)) 
+
+fish3_sum_tidy <- pivot_longer(fish_3_sum, cols=(2:4), names_to = "species", values_to = "passage")
+```
+
+Create plot of yearly totals:
+```{r}
+ggplot(data=fish3_sum_tidy, aes(x=as.factor(year), y=passage, group=species, fill=species))+
+  geom_line(aes(color=species),size=2) +
+  scale_color_brewer(palette="Set2") +
+  labs(y="Total Fish Passage", x="Year", fill="Species", title="Total Fish Passage by Year of 3 Species")+
+  theme_minimal()
+```
+
+Steelhead overall have the most passage in historical trends, though overall the passage is decreasing. Coho and Jack Coho tend to be lower passage, but overall the the trend is increasing.
